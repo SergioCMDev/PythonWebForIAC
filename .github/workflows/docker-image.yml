@@ -17,6 +17,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build the Docker image
-        run: docker build -t sergiocmdev/basic-python-web:latest .
+        run: docker build -t sergiocmdev/basic-python-web:latest ../Dockerfile .
       - name: Push the Docker image
         run: docker push sergiocmdev/basic-python-web:latest
