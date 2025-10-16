@@ -22,7 +22,7 @@ jobs:
           version: "latest"
       - name: Probar kubeconfig
         run: |
-          kubectl --kubeconfig=/home/ec2-user/.kube/config cluster-info
+          sudo kubectl --kubeconfig=/home/ec2-user/.kube/config cluster-info
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
