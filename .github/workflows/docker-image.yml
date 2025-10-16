@@ -31,3 +31,5 @@ jobs:
         run: docker build -t sergiocmdev/basic-python-web:latest .
       - name: Push the Docker image
         run: docker push sergiocmdev/basic-python-web:latest
+      - name: Update deployment image
+        run: sudo kubectl --kubeconfig=/home/ec2-user/.kube/config kubectl rollout restart deployment/python-basic-web
