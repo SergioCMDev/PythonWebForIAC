@@ -39,7 +39,6 @@ jobs:
           cd /opt/scripts
           whoami
           ls -la
-          cat configure_eks_script.sh
           bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
         shell: bash
       - name: Blue Green Deployment to Kubernetes
