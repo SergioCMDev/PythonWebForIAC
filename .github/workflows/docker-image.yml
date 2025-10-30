@@ -37,23 +37,24 @@ jobs:
       - name: Setup EKS access
         run: |
           cd /opt/scripts
-          whoami
-          ls -la
           sudo sed -i 's/\r$//' ./configure_eks_script.sh
-
           bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
         shell: bash
       - name: Blue Green Deployment to Kubernetes
         run: |
-          # ANNOTATION_VALUE="{\"type\":\"forward\",\"forwardConfig\":{\"targetGroups\":[{\"serviceName\":\"app-blue-service\",\"servicePort\":\"80\",\"weight\":$BLUE_WEIGHT,{\"serviceName\":\"app-green-service\",\"servicePort\":\"80\",\"weight\":$GREEN_WEIGHT]}}"
+          cd /opt/scripts
+          sudo sed -i 's/\r$//' ./blue_green_updater.sh
+          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} ${{ env.BLUE_WEIGHT }} ${{ env.GREEN_WEIGHT }}
 
-          # kubectl patch ingress $ingress -n $namespace --type='json' -p="[
-          # {
-          #  \"op\": \"replace\",
-          # "\path\": \"/metadata/annotations/alb.ingress.kubernetes.io~1actions.weighted-routing\",
-          # "\value\": \"${ANNOTATION_VALUE}\ "
-          # }
-          # ]"
+        # ANNOTATION_VALUE="{\"type\":\"forward\",\"forwardConfig\":{\"targetGroups\":[{\"serviceName\":\"app-blue-service\",\"servicePort\":\"80\",\"weight\":$BLUE_WEIGHT,{\"serviceName\":\"app-green-service\",\"servicePort\":\"80\",\"weight\":$GREEN_WEIGHT]}}"
+
+        # kubectl patch ingress $ingress -n $namespace --type='json' -p="[
+        # {
+        #  \"op\": \"replace\",
+        # "\path\": \"/metadata/annotations/alb.ingress.kubernetes.io~1actions.weighted-routing\",
+        # "\value\": \"${ANNOTATION_VALUE}\ "
+        # }
+        # ]"
         env:
           BLUE_WEIGHT: 50
           GREEN_WEIGHT: 50
