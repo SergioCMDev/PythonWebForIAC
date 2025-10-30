@@ -84,16 +84,17 @@ jobs:
           bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
       - name: Verificar rollout
         run: |
+          APP= ""
           echo "Esperando que el rollout se complete..."
-          DEPLOYMENT_VERSION=""
           if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
             echo "Checking Green deployment"
-            env.DEPLOYMENT_VERSION="green"
+            APP="app-green"
           else
             echo "Checking Blue deployment"   
-            env.DEPLOYMENT_VERSION="blue"
+            APP="app-blue"
+
           fi
-          kubectl rollout status deployment/app-${{ env.DEPLOYMENT_VERSION }} \
+          kubectl rollout status deployment/$APP\
             -n ${{ env.K8S_NAMESPACE }} \
             --timeout=2m
 
