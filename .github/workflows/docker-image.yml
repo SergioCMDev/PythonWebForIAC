@@ -68,7 +68,7 @@ jobs:
           GREEN_WEIGHT: 50
       - name: Wait for blue-green change Kubernetes Deployment
         run: |
-          echo "Waiting for 2 minutes to stabilize the deployment..."
+          echo "Waiting for 1 minute to stabilize the deployment..."
           sleep 60
       - name: Change the rest to the other service
         run: |
