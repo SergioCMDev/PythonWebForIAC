@@ -37,6 +37,7 @@ jobs:
       - name: Setup EKS access
         run: |
           cd /opt/scripts
+          whoami
           ls -la
           ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
         shell: bash
