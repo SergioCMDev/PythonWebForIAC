@@ -39,7 +39,7 @@ jobs:
           ls
           cd /opt/scripts
           ls
-          configure-eks_script ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
+          configure_eks_script ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
       - name: Blue Green Deployment to Kubernetes
         run: |
           ANNOTATION_VALUE="{\"type\":\"forward\",\"forwardConfig\":{\"targetGroups\":[{\"serviceName\":\"app-blue-service\",\"servicePort\":\"80\",\"weight\":$BLUE_WEIGHT,{\"serviceName\":\"app-green-service\",\"servicePort\":\"80\",\"weight\":$GREEN_WEIGHT]}}"
