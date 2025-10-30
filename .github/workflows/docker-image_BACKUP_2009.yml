@@ -34,12 +34,6 @@ jobs:
         run: |
           sudo usermod -aG docker $USER
           newgrp docker
-      - name: Setup EKS access
-        run: |
-          cd /opt/scripts
-          sudo sed -i 's/\r$//' ./configure_eks_script.sh
-          bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
-        shell: bash
       - name: Check which service needs to be updated
         run: |
           echo "Checking which service(blue or green) needs to be updated..." 
@@ -47,6 +41,7 @@ jobs:
           jq -r '.metadata.annotations."alb.ingress.kubernetes.io/actions.weighted-routing" | fromjson | .forwardConfig.targetGroups[] | select(.serviceName=="app-blue-service") | .weight')
 
           if [ "$BLUE_WEIGHT" -eq 100 ]; then
+<<<<<<< HEAD
             echo "Selecting Green service"
             CHANGE_TO_GREEN=1
             Docker_VERSION=Green
@@ -55,10 +50,27 @@ jobs:
             Docker_VERSION=Blue
           fi
       - name: Build the Docker image
+=======
+            CHANGE_TO_GREEN=1
+          fi
+      - name: Build the Docker image
+          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
+          echo "Selecting V2 for Green service"
+          Docker_VERSION=Green
+          else
+          echo "Selecting V1 for Blue service"
+          Docker_VERSION=Blue
+          fi
+>>>>>>> b8f1b0e6e93be8dd46a16d7bc006b26750aa37b4
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}} .
       - name: Push the Docker image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}}
-
+      - name: Setup EKS access
+        run: |
+          cd /opt/scripts
+          sudo sed -i 's/\r$//' ./configure_eks_script.sh
+          bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
+        shell: bash
       - name: initial blue Green Deployment to Kubernetes
         run: |
           cd /opt/scripts
