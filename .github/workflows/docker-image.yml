@@ -43,29 +43,37 @@ jobs:
           cd /opt/scripts
           sudo sed -i 's/\r$//' ./configure_eks_script.sh
           bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
-          aws sts get-caller-identity
-
         shell: bash
-      - name: Blue Green Deployment to Kubernetes
+      - name: initial blue Green Deployment to Kubernetes
         run: |
           cd /opt/scripts
-          sudo sed -i 's/\r$//' ./blue_green_updater.sh
           bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} ${{ env.BLUE_WEIGHT }} ${{ env.GREEN_WEIGHT }}
         env:
           BLUE_WEIGHT: 50
           GREEN_WEIGHT: 50
-      # - name: Verificar rollout
-      #   run: |
-      #     echo "Esperando que el rollout se complete..."
-      #     sudo kubectl --kubeconfig=/home/ec2-user/.kube/config rollout status deployment/${{ env.K8S_DEPLOYMENT }} \
-      #       -n ${{ env.K8S_NAMESPACE }} \
-      #       --timeout=10m
+      - name: Wait for blue-green change Kubernetes Deployment
+        run: |
+          echo "Waiting for 2 minutes to stabilize the deployment..."
+          sleep 120
+      - name: initial blue Green Deployment to Kubernetes
+        run: |
+          cd /opt/scripts
+          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} ${{ env.BLUE_WEIGHT }} ${{ env.GREEN_WEIGHT }}
+        env:
+          BLUE_WEIGHT: 0
+          GREEN_WEIGHT: 100
+      - name: Verificar rollout
+        run: |
+          echo "Esperando que el rollout se complete..."
+          sudo kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT }} \
+            -n ${{ env.K8S_NAMESPACE }} \
+            --timeout=10m
 
-      # - name: Verificar estado de los pods
-      #   if: always()
-      #   run: |
-      #     echo "Estado de los pods después del deployment:"
-      #     sudo kubectl --kubeconfig=/home/ec2-user/.kube/config get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.K8S_DEPLOYMENT }}
+      - name: Verificar estado de los pods
+        if: always()
+        run: |
+          echo "Estado de los pods después del deployment:"
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.K8S_DEPLOYMENT }}
 
       # - name: Rollback en caso de fallo
       #   if: failure()
