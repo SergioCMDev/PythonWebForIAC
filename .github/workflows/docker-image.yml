@@ -34,10 +34,24 @@ jobs:
         run: |
           sudo usermod -aG docker $USER
           newgrp docker
+      - name: Check which service needs to be updated
+        run: |
+          echo "Checking which service(blue or green) needs to be updated..." 
+          BLUE_WEIGHT=$(kubectl get ingress ${{ env.ingress }} -n ${{ env.K8S_NAMESPACE }} -o json -o json | \
+          jq -r '.metadata.annotations."alb.ingress.kubernetes.io/actions.weighted-routing" | fromjson | .forwardConfig.targetGroups[] | select(.serviceName=="app-blue-service") | .weight')
+
+          if [ "$BLUE_WEIGHT" -eq 100 ]; then
+            echo "Selecting Green service"
+            CHANGE_TO_GREEN=1
+            Docker_VERSION=Green
+          else
+            echo "Selecting Blue service"
+            Docker_VERSION=Blue
+          fi
       - name: Build the Docker image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:v2 .
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}} .
       - name: Push the Docker image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:v2
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}}
       - name: Setup EKS access
         run: |
           cd /opt/scripts
@@ -55,19 +69,25 @@ jobs:
         run: |
           echo "Waiting for 2 minutes to stabilize the deployment..."
           sleep 120
-      - name: initial blue Green Deployment to Kubernetes
+      - name: Change the rest to the other service
         run: |
           cd /opt/scripts
-          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} ${{ env.BLUE_WEIGHT }} ${{ env.GREEN_WEIGHT }}
-        env:
-          BLUE_WEIGHT: 0
-          GREEN_WEIGHT: 100
+          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
+            echo "Changing 100% to Green service"
+            BLUE_WEIGHT=0
+            GREEN_WEIGHT=100
+          else
+            echo "Changing 100% to Blue service"
+            BLUE_WEIGHT=100
+            GREEN_WEIGHT=0
+          fi
+          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
       - name: Verificar rollout
         run: |
           echo "Esperando que el rollout se complete..."
-          sudo kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT }} \
+          kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT }} \
             -n ${{ env.K8S_NAMESPACE }} \
-            --timeout=10m
+            --timeout=2m
 
       - name: Verificar estado de los pods
         if: always()
@@ -75,8 +95,20 @@ jobs:
           echo "Estado de los pods después del deployment:"
           kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.K8S_DEPLOYMENT }}
 
-      # - name: Rollback en caso de fallo
-      #   if: failure()
-      #   run: |
-      #     echo "Realizando rollback del deployment..."
-      #     kubectl --kubeconfig=/home/ec2-user/.kube/config rollout undo deployment/${{ env.K8S_DEPLOYMENT }} -n ${{ env.K8S_NAMESPACE }}
+      - name: Rollback en caso de fallo
+        if: failure()
+        run: |
+          echo "Realizando rollback del deployment..."
+          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
+            echo "Changing 100% to Green service"
+            BLUE_WEIGHT=100
+            GREEN_WEIGHT=0
+          else
+            echo "Changing 100% to Blue service"
+            BLUE_WEIGHT=0
+            GREEN_WEIGHT=100
+          fi
+          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
+env:
+  CHANGE_TO_GREEN: 0
+  Docker_VERSION: 0
