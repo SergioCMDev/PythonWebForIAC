@@ -11,7 +11,7 @@ jobs:
     runs-on: self-hosted
     env:
       K8S_NAMESPACE: "default"
-      K8S_DEPLOYMENT: "python-basic-web"
+      K8S_APP_LABEL: "python-basic-web"
       CLUSTER_NAME: "Mi-cluster"
       AWS_REGION: "eu-west-3"
       ingress: "main-ingress"
@@ -58,7 +58,6 @@ jobs:
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}} .
       - name: Push the Docker image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}}
-
       - name: initial blue Green Deployment to Kubernetes
         run: |
           cd /opt/scripts
@@ -86,7 +85,15 @@ jobs:
       - name: Verificar rollout
         run: |
           echo "Esperando que el rollout se complete..."
-          kubectl rollout status deployment/${{ env.K8S_DEPLOYMENT }} \
+          DEPLOYMENT_VERSION=""
+          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
+            echo "Checking Green deployment"
+            env.DEPLOYMENT_VERSION="green"
+          else
+            echo "Checking Blue deployment"   
+            env.DEPLOYMENT_VERSION="blue"
+          fi
+          kubectl rollout status deployment/app-${{ env.DEPLOYMENT_VERSION }} \
             -n ${{ env.K8S_NAMESPACE }} \
             --timeout=2m
 
@@ -94,7 +101,7 @@ jobs:
         if: always()
         run: |
           echo "Estado de los pods después del deployment:"
-          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.K8S_DEPLOYMENT }}
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.K8S_APP_LABEL }},version=${{ env.DEPLOYMENT_VERSION }}
 
       - name: Rollback en caso de fallo
         if: failure()
@@ -109,7 +116,9 @@ jobs:
             BLUE_WEIGHT=0
             GREEN_WEIGHT=100
           fi
+          cd /opt/scripts
           bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
 env:
   CHANGE_TO_GREEN: 0
   Docker_VERSION: 0
+  DEPLOYMENT_VERSION: ""
