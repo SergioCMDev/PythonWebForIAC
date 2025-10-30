@@ -43,16 +43,17 @@ jobs:
       - name: Check which service needs to be updated
         run: |
           echo "Checking which service(blue or green) needs to be updated..." 
-          BLUE_WEIGHT=$(kubectl get ingress ${{ env.ingress }} -n ${{ env.K8S_NAMESPACE }} -o json -o json | \
+          BLUE_WEIGHT=$(kubectl get ingress ${{ env.ingress }} -n ${{ env.K8S_NAMESPACE }} -o json | \
           jq -r '.metadata.annotations."alb.ingress.kubernetes.io/actions.weighted-routing" | fromjson | .forwardConfig.targetGroups[] | select(.serviceName=="app-blue-service") | .weight')
 
           if [ "$BLUE_WEIGHT" -eq 100 ]; then
             echo "Selecting Green service"
-            CHANGE_TO_GREEN=1
-            Docker_VERSION=Green
+            echo "CHANGE_TO_GREEN=1" >> $GITHUB_ENV
+            echo "Docker_VERSION=Green" >> $GITHUB_ENV
           else
             echo "Selecting Blue service"
-            Docker_VERSION=Blue
+            echo "CHANGE_TO_GREEN=0" >> $GITHUB_ENV
+            echo "Docker_VERSION=Blue" >> $GITHUB_ENV
           fi
       - name: Build the Docker image
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}} .
@@ -89,11 +90,12 @@ jobs:
           if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
             echo "Checking Green deployment"
             APP="app-green"
-            env.DEPLOYMENT_VERSION="green"
+            echo DEPLOYMENT_VERSION="green" >> $GITHUB_ENV
+
           else
             echo "Checking Blue deployment"   
             APP="app-blue"
-            env.DEPLOYMENT_VERSION="blue"
+            echo DEPLOYMENT_VERSION="blue" >> $GITHUB_ENV
           fi
           kubectl rollout status deployment/$APP\
             -n ${{ env.K8S_NAMESPACE }} \
