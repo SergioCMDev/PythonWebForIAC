@@ -37,6 +37,8 @@ jobs:
       - name: Setup EKS access
         run: |
           ls
+          cd /opt/scripts
+          ls
           configure-eks ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
       - name: Blue Green Deployment to Kubernetes
         run: |
