@@ -38,7 +38,6 @@ jobs:
         run: |
           cd /opt/scripts
           ls -la
-          chmod +x configure_eks_script.sh
           ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
         shell: bash
       - name: Blue Green Deployment to Kubernetes
