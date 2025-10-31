@@ -11,8 +11,7 @@ jobs:
     runs-on: self-hosted
     env:
       K8S_NAMESPACE: "default"
-      K8S_APP_LABEL: "python-basic-web"
-      CLUSTER_NAME: "Mi-cluster"
+      CLUSTER_NAME: "mi-cluster"
       AWS_REGION: "eu-west-3"
       ingress: "main-ingress"
       namespace: "default"
@@ -40,25 +39,48 @@ jobs:
           sudo sed -i 's/\r$//' ./configure_eks_script.sh
           bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
         shell: bash
+
       - name: Check which service needs to be updated
         run: |
-          echo "Checking which service(blue or green) needs to be updated..." 
+          echo "Comprobando que servicio necesita ser actualizado..." 
           BLUE_WEIGHT=$(kubectl get ingress ${{ env.ingress }} -n ${{ env.K8S_NAMESPACE }} -o json | \
           jq -r '.metadata.annotations."alb.ingress.kubernetes.io/actions.weighted-routing" | fromjson | .forwardConfig.targetGroups[] | select(.serviceName=="app-blue-service") | .weight')
 
           if [ "$BLUE_WEIGHT" -eq 100 ]; then
             echo "Selecting Green service"
-            echo "CHANGE_TO_GREEN=1" >> $GITHUB_ENV
-            echo "Docker_VERSION=Green" >> $GITHUB_ENV
+            TARGET="green"
           else
             echo "Selecting Blue service"
-            echo "CHANGE_TO_GREEN=0" >> $GITHUB_ENV
-            echo "Docker_VERSION=Blue" >> $GITHUB_ENV
+            TARGET="blue"
           fi
+
+          TIMESTAMP=$(date +%s)
+          GIT_SHA=$(git rev-parse --short HEAD)
+          BUILD_NUMBER=${{ github.run_number }}
+          UNIQUE_TAG="${TARGET}-${GIT_SHA}-${BUILD_NUM}"
+          LATEST_TAG="${TARGET}"
+
+          echo "UNIQUE_TAG=$UNIQUE_TAG" >> $GITHUB_ENV
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "DEPLOYMENT_TARGET=$TARGET" >> $GITHUB_ENV
+
       - name: Build the Docker image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}} .
-      - name: Push the Docker image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.Docker_VERSION}}
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG }} .
+          docker tag ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG }} \
+          ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.LATEST_TAG }}
+
+      - name: Push the Docker images
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG}}
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.LATEST_TAG}}
+
+      - name: Update deployment
+        run: |
+          kubectl set image deployment/app-${{ env.DEPLOYMENT_TARGET }} \
+          python-basic-web=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG }} \
+          -n ${{ env.K8S_NAMESPACE }}
+
       - name: initial blue Green Deployment to Kubernetes
         run: |
           cd /opt/scripts
@@ -66,38 +88,30 @@ jobs:
         env:
           BLUE_WEIGHT: 50
           GREEN_WEIGHT: 50
+
       - name: Wait for blue-green change Kubernetes Deployment
         run: |
-          echo "Waiting for 1 minute to stabilize the deployment..."
+          echo "Esperando 1 minuto para estabilizacion del deployment..."
           sleep 60
+
       - name: Change the rest to the other service
         run: |
           cd /opt/scripts
-          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
-            echo "Changing 100% to Green service"
+          if [ "${{ env.DEPLOYMENT_TARGET }}" == "green" ]; then
+            echo "Cambiando 100% a Green"
             BLUE_WEIGHT=0
             GREEN_WEIGHT=100
           else
-            echo "Changing 100% to Blue service"
+            echo "Cambiando 100% a Blue"
             BLUE_WEIGHT=100
             GREEN_WEIGHT=0
           fi
           bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
+
       - name: Verificar rollout
         run: |
-          APP=""
-          echo "Esperando que el rollout se complete..."
-          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
-            echo "Checking Green deployment"
-            APP="app-green"
-            echo DEPLOYMENT_VERSION="green" >> $GITHUB_ENV
-
-          else
-            echo "Checking Blue deployment"   
-            APP="app-blue"
-            echo DEPLOYMENT_VERSION="blue" >> $GITHUB_ENV
-          fi
-          kubectl rollout status deployment/$APP\
+          echo "Verificando el estado del rollout del deployment..."
+          kubectl rollout status deployment/app-${{ env.DEPLOYMENT_TARGET }}\
             -n ${{ env.K8S_NAMESPACE }} \
             --timeout=2m
 
@@ -105,24 +119,24 @@ jobs:
         if: always()
         run: |
           echo "Estado de los pods después del deployment:"
-          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ env.K8S_APP_LABEL }},version=${{ env.DEPLOYMENT_VERSION }}
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ secrets.DOCKER_PROJECT }},version=${{ env.DEPLOYMENT_TARGET }}
 
       - name: Rollback en caso de fallo
         if: failure()
         run: |
           echo "Realizando rollback del deployment..."
-          if [ "${{ env.CHANGE_TO_GREEN }}" -eq 1 ]; then
-            echo "Changing 100% to Green service"
+          if [ "${{ env.DEPLOYMENT_TARGET }}" == "green" ]; then
+            echo "Cambiando 100% a Blue"
             BLUE_WEIGHT=100
             GREEN_WEIGHT=0
           else
-            echo "Changing 100% to Blue service"
+            echo "Cambiando 100% a Green"
             BLUE_WEIGHT=0
             GREEN_WEIGHT=100
           fi
           cd /opt/scripts
           bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
 env:
-  CHANGE_TO_GREEN: 0
-  Docker_VERSION: 0
-  DEPLOYMENT_VERSION: ""
+  UNIQUE_TAG: ""
+  LATEST_TAG: ""
+  DEPLOYMENT_TARGET: ""
