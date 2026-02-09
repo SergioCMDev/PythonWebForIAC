@@ -1,7 +1,6 @@
 # testInit.py
-# import unittest
 from unittest import TestCase
-import operations
+from operations import operations 
 
 class TestInit(TestCase):
     def setUp(self):
@@ -9,4 +8,6 @@ class TestInit(TestCase):
 
     def test_prueba1(self):
         self.assertEqual(operations.suma(1,2), 3)
-    
+        
+    def test_prueba2(self):
+        self.assertEqual(operations.suma(2,2), 4)
