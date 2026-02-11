@@ -61,8 +61,7 @@ jobs:
           --build-arg VERSION=$IMAGE_TAG \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$GIT_SHA_TAG \
-          -t $ECR_REGISTRY/$ECR_REPOSITORY:stable\
-          .
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:stable .
 
       - name: Run security scan (Trivy)
         uses: aquasecurity/trivy-action@master
