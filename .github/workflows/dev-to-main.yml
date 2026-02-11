@@ -14,6 +14,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v5
         with:
+          token: ${{ secrets.PAT_TOKEN }} # Necesario para disparar el siguiente workflow
           fetch-depth: 0
 
       - name: Setup Python
