@@ -1,0 +1,50 @@
+name: Dev to Main Workflow
+
+on:
+  push:
+    branches: ["dev"]
+  pull_request:
+    branches: ["dev"]
+jobs:
+  dev-to-main:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.PAT_TOKEN }} # Necesario para disparar el siguiente workflow
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install pytest
+        run: |
+          pip install pytest flake8
+          pip install -r requirements.txt
+
+      - name: Syntax Check
+        run: |
+          python -m compileall .
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Testing
+        run: |
+          echo "Running tests..."
+          python -m pytest tests
+
+      - name: Merge to main
+        if: github.event_name == 'push'
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          GIT_SHA=$(git rev-parse --short HEAD)
+
+          git switch main
+          git merge dev --no-ff -m "Merge dev into main using GitHub Actions from commit $GIT_SHA "
+          git push origin main
+          echo "success"
