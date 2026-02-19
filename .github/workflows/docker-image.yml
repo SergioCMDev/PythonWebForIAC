@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 env:
-  ECR_REPOSITORY: python-web-app
+  ECR_REPOSITORY: python_web_app
 jobs:
   login-build:
     runs-on: ubuntu-latest
