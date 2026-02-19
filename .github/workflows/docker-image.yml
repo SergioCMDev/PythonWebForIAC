@@ -6,137 +6,112 @@ on:
   pull_request:
     branches: ["main"]
 
+env:
+  ECR_REPOSITORY: python-web-app
 jobs:
   login-build:
-    runs-on: self-hosted
-    env:
-      K8S_NAMESPACE: "default"
-      CLUSTER_NAME: "mi-cluster"
-      AWS_REGION: "eu-west-3"
-      ingress: "main-ingress"
-      namespace: "default"
+    runs-on: ubuntu-latest
+
+    # Permisos necesarios para OIDC
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Configurar kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: "latest"
       - name: Checkout source code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Setup Docker permissions
-        run: |
-          sudo usermod -aG docker $USER
-          newgrp docker
-      - name: Setup EKS access
-        run: |
-          cd /opt/scripts
-          sudo sed -i 's/\r$//' ./configure_eks_script.sh
-          bash ./configure_eks_script.sh ${{ env.CLUSTER_NAME }} ${{ env.AWS_REGION }}
-        shell: bash
 
-      - name: Check which service needs to be updated
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: GitHubActions-ECR-Push
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate unique image tag
+        id: generate-tag
         run: |
-          echo "Comprobando que servicio necesita ser actualizado..." 
-          BLUE_WEIGHT=$(kubectl get ingress ${{ env.ingress }} -n ${{ env.K8S_NAMESPACE }} -o json | \
-          jq -r '.metadata.annotations."alb.ingress.kubernetes.io/actions.weighted-routing" | fromjson | .forwardConfig.targetGroups[] | select(.serviceName=="app-blue-service") | .weight')
-
-          if [ "$BLUE_WEIGHT" -eq 100 ]; then
-            echo "Selecting Green service"
-            TARGET="green"
-          else
-            echo "Selecting Blue service"
-            TARGET="blue"
-          fi
-
-          TIMESTAMP=$(date +%s)
           GIT_SHA=$(git rev-parse --short HEAD)
           BUILD_NUMBER=${{ github.run_number }}
-          UNIQUE_TAG="${TARGET}-${GIT_SHA}-${BUILD_NUM}"
-          LATEST_TAG="${TARGET}"
+          TIMESTAMP=$(date +%s)
 
-          echo "UNIQUE_TAG=$UNIQUE_TAG" >> $GITHUB_ENV
-          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
-          echo "DEPLOYMENT_TARGET=$TARGET" >> $GITHUB_ENV
+          IMAGE_TAG="${GIT_SHA}-${BUILD_NUMBER}-${TIMESTAMP}"
+
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "GIT_SHA=$GIT_SHA" >> $GITHUB_OUTPUT
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+          echo "Image tag: $IMAGE_TAG"
 
       - name: Build the Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
+          GIT_SHA_TAG: ${{ steps.generate-tag.outputs.GIT_SHA }}
         run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG }} .
-          docker tag ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG }} \
-          ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.LATEST_TAG }}
+          docker build \
+          --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+          --build-arg VCS_REF=$GIT_SHA_TAG \
+          --build-arg VERSION=$IMAGE_TAG \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$GIT_SHA_TAG \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:stable .
+      - name: Debug Image_REF
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
+          IMAGE_REF: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.generate-tag.outputs.IMAGE_TAG }}
+        run: "echo Running image $IMAGE_REF ${{env.IMAGE_REF}}"
+
+      - name: Run security scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
+          IMAGE_REF: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.generate-tag.outputs.IMAGE_TAG }}
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          format: "sarif"
+          output: "trivy-results.sarif"
 
       - name: Push the Docker images
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG}}
-          docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.LATEST_TAG}}
-
-      - name: Update deployment
-        run: |
-          kubectl set image deployment/app-${{ env.DEPLOYMENT_TARGET }} \
-          python-basic-web=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_PROJECT }}:${{ env.UNIQUE_TAG }} \
-          -n ${{ env.K8S_NAMESPACE }}
-
-      - name: initial blue Green Deployment to Kubernetes
-        run: |
-          cd /opt/scripts
-          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} ${{ env.BLUE_WEIGHT }} ${{ env.GREEN_WEIGHT }}
         env:
-          BLUE_WEIGHT: 50
-          GREEN_WEIGHT: 50
-
-      - name: Wait for blue-green change Kubernetes Deployment
+          IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
+          IMAGE_REF: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.generate-tag.outputs.IMAGE_TAG }}
+          IMAGE_REF_STABLE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:stable
         run: |
-          echo "Esperando 1 minuto para estabilizacion del deployment..."
-          sleep 60
+          echo "Pushing image to ECR..."
 
-      - name: Change the rest to the other service
-        run: |
-          cd /opt/scripts
-          if [ "${{ env.DEPLOYMENT_TARGET }}" == "green" ]; then
-            echo "Cambiando 100% a Green"
-            BLUE_WEIGHT=0
-            GREEN_WEIGHT=100
-          else
-            echo "Cambiando 100% a Blue"
-            BLUE_WEIGHT=100
-            GREEN_WEIGHT=0
-          fi
-          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
+          docker push ${{env.IMAGE_REF}}
+          docker push ${{env.IMAGE_REF_STABLE}}
 
-      - name: Verificar rollout
-        run: |
-          echo "Verificando el estado del rollout del deployment..."
-          kubectl rollout status deployment/app-${{ env.DEPLOYMENT_TARGET }}\
-            -n ${{ env.K8S_NAMESPACE }} \
-            --timeout=2m
+          echo "Pushed tags:"
+          echo "  - ${{env.IMAGE_TAG}} (for production)"
+          echo "  - stable (for manual testing)"
 
-      - name: Verificar estado de los pods
-        if: always()
-        run: |
-          echo "Estado de los pods después del deployment:"
-          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=${{ secrets.DOCKER_PROJECT }},version=${{ env.DEPLOYMENT_TARGET }}
+      - name: Trigger deployment
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
+          GIT_SHA: ${{ steps.generate-tag.outputs.GIT_SHA }}
 
-      - name: Rollback en caso de fallo
-        if: failure()
-        run: |
-          echo "Realizando rollback del deployment..."
-          if [ "${{ env.DEPLOYMENT_TARGET }}" == "green" ]; then
-            echo "Cambiando 100% a Blue"
-            BLUE_WEIGHT=100
-            GREEN_WEIGHT=0
-          else
-            echo "Cambiando 100% a Green"
-            BLUE_WEIGHT=0
-            GREEN_WEIGHT=100
-          fi
-          cd /opt/scripts
-          bash ./blue_green_updater.sh  ${{ env.K8S_NAMESPACE }} ${{ env.ingress }} $BLUE_WEIGHT $GREEN_WEIGHT
-env:
-  UNIQUE_TAG: ""
-  LATEST_TAG: ""
-  DEPLOYMENT_TARGET: ""
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: SergioCMDev/Infra-AWS-EKS-Python #Change to secret o asi
+          event-type: deploy-app
+          client-payload: |
+            {
+              "image_tag": "${{ env.IMAGE_TAG }}",
+              "git_sha": "${{ env.GIT_SHA }}",
+              "ecr_registry": ""${{ env.ECR_REGISTRY }}",
+              "repository": "${{ env.ECR_REPOSITORY }}",
+              "triggered_by": "${{ github.actor }}"
+            }
