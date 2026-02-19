@@ -8,6 +8,7 @@ on:
 
 env:
   ECR_REPOSITORY: python_web_app
+  SSM_PARAMETER_NAME: "/app-python-web/active-slot"
 jobs:
   login-build:
     runs-on: ubuntu-latest
@@ -48,7 +49,17 @@ jobs:
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_OUTPUT
 
           echo "Image tag: $IMAGE_TAG"
-
+      - name: Get blue or green tag
+        id: get-blue-green-tag
+        run: |
+          ACTIVE = $(aws ssm get-parameter --name "$SSM_PARAMETER_NAME" --query "Parameter.Value" --output text)
+          if ["$ACTIVE" == "blue"]; then
+            TAG="green"
+          else
+            TAG="blue"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "tag => $TAG"
       - name: Build the Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -85,11 +96,14 @@ jobs:
           IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
           IMAGE_REF: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.generate-tag.outputs.IMAGE_TAG }}
           IMAGE_REF_STABLE: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:stable
+          IMAGE_REF_BLUE_GREEN: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.get-blue-green-tag.outputs.TAG }}
+
         run: |
           echo "Pushing image to ECR..."
 
           docker push ${{env.IMAGE_REF}}
           docker push ${{env.IMAGE_REF_STABLE}}
+          docker push ${{env.IMAGE_REF_BLUE_GREEN}}
 
           echo "Pushed tags:"
           echo "  - ${{env.IMAGE_TAG}} (for production)"
@@ -100,7 +114,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
           GIT_SHA: ${{ steps.generate-tag.outputs.GIT_SHA }}
-
+          TAG: ${{ steps.get-blue-green-tag.outputs.TAG }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: peter-evans/repository-dispatch@v3
         with:
@@ -114,4 +128,5 @@ jobs:
               "ecr_registry": "${{ env.ECR_REGISTRY }}",
               "repository": "${{ env.ECR_REPOSITORY }}",
               "triggered_by": "${{ github.actor }}"
+              "blue_green_tag": ${{ env.TAG }}
             }
