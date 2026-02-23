@@ -65,6 +65,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ steps.generate-tag.outputs.IMAGE_TAG }}
           GIT_SHA_TAG: ${{ steps.generate-tag.outputs.GIT_SHA }}
+          BLUE_GREEN_TAG: ${{ steps.get-blue-green-tag.outputs.TAG }}
         run: |
           docker build \
           --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
@@ -72,7 +73,8 @@ jobs:
           --build-arg VERSION=$IMAGE_TAG \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$GIT_SHA_TAG \
-          -t $ECR_REGISTRY/$ECR_REPOSITORY:stable .
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$GIT_SHA_TAG \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$BLUE_GREEN_TAG .
       - name: Debug Image_REF
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
