@@ -130,5 +130,5 @@ jobs:
               "ecr_registry": "${{ env.ECR_REGISTRY }}",
               "repository": "${{ env.ECR_REPOSITORY }}",
               "triggered_by": "${{ github.actor }}",
-              "blue_green_tag": ${{ env.TAG }}
+              "blue_green_tag": "${{ env.TAG }}"
             }
