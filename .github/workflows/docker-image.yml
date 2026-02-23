@@ -129,6 +129,6 @@ jobs:
               "git_sha": "${{ env.GIT_SHA }}",
               "ecr_registry": "${{ env.ECR_REGISTRY }}",
               "repository": "${{ env.ECR_REPOSITORY }}",
-              "triggered_by": "${{ github.actor }}"
+              "triggered_by": "${{ github.actor }}",
               "blue_green_tag": ${{ env.TAG }}
             }
