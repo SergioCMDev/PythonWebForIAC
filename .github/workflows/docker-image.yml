@@ -115,7 +115,7 @@ jobs:
           echo "Pushed tags:"
           echo "  - ${{env.IMAGE_TAG}} (for production)"
           echo "  - stable (for manual testing)"
-          echo "  - ${{env.IMAGE_REF_BLUE_GREEN}} (blue-green)
+          echo "  - ${{env.IMAGE_REF_BLUE_GREEN}} (blue-green)"
 
       - name: Trigger deployment
         env:
