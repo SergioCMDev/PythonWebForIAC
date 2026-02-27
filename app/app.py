@@ -8,7 +8,7 @@ app = Flask(__name__)
 def hello():
     hostname = os.uname().nodename
     node_name = os.getenv("NODE_NAME", "unknown-node")
-    return f"Hello World! from {hostname} - {node_name} - Test Flujos blue"
+    return f"Hello World! from {hostname} - {node_name} - Test Flujos blue 2"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
