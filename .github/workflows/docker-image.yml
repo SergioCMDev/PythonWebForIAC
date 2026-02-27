@@ -56,8 +56,10 @@ jobs:
           echo "Active $blue -- blue"
           if ["$ACTIVE" == "blue"]; then
             TAG="green"
+            echo "green"
           else
             TAG="blue"
+            echo "blue"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "tag >> $TAG"
