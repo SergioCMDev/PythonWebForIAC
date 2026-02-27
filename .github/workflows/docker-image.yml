@@ -7,7 +7,7 @@ on:
       - "README.md"
       - "docs/**"
       - "tests/**"
-      - "github/**"
+      - ".github/**"
   pull_request:
     branches: ["main"]
 
