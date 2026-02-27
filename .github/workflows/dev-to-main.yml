@@ -2,6 +2,11 @@ name: Dev to Main Workflow
 
 on:
   push:
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+      - "tests/**"
+      - "github/**"
     branches: ["dev"]
   pull_request:
     branches: ["dev"]
