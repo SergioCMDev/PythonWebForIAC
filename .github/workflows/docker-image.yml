@@ -53,13 +53,10 @@ jobs:
         id: get-blue-green-tag
         run: |
           ACTIVE=$(aws ssm get-parameter --name "$SSM_PARAMETER_NAME" --query "Parameter.Value" --output text)
-          echo "Active $ACTIVE -- blue"
           if [[ "$ACTIVE" == "blue" ]]; then
             TAG="green"
-            echo "green"
           else
             TAG="blue"
-            echo "blue"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "tag >> $TAG"
@@ -113,6 +110,7 @@ jobs:
           echo "Pushed tags:"
           echo "  - ${{env.IMAGE_TAG}} (for production)"
           echo "  - stable (for manual testing)"
+          echo "  - ${{env.IMAGE_REF_BLUE_GREEN}} (blue-green)
 
       - name: Trigger deployment
         env:
