@@ -59,7 +59,7 @@ jobs:
             TAG="blue"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "tag => $TAG"
+          echo "tag >> $TAG"
       - name: Build the Docker image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
