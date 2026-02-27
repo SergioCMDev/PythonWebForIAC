@@ -53,6 +53,7 @@ jobs:
         id: get-blue-green-tag
         run: |
           ACTIVE=$(aws ssm get-parameter --name "$SSM_PARAMETER_NAME" --query "Parameter.Value" --output text)
+          echo "Active $blue -- blue"
           if ["$ACTIVE" == "blue"]; then
             TAG="green"
           else
